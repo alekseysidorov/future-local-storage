@@ -1,7 +1,6 @@
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
     future::Future,
-    ops::Deref,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -26,11 +25,18 @@ impl<T: Send> FutureLock<T> {
         self.0.get()
     }
 
-    #[must_use]
-    pub fn get(&'static self) -> impl Deref<Target = Option<T>> {
+    fn get(&'static self) -> Ref<Option<T>> {
         let local_key = self.local_key();
         let value = local_key.borrow();
         value
+    }
+
+    fn attach<F: Future>(&'static self, fut: F) -> InstrumentedFuture<T, F> {
+        InstrumentedFuture {
+            inner: fut,
+            future_lock: self,
+            stored_value: None,
+        }
     }
 
     pub fn set(&'static self, value: T) {
@@ -47,19 +53,6 @@ impl<T: Send> FutureLock<T> {
         }
 
         with(self.local_key().borrow().as_ref().unwrap())
-    }
-
-    fn replace(&'static self, other: Option<T>) -> Option<T> {
-        let local_key = self.local_key();
-        local_key.replace(other)
-    }
-
-    fn attach<F: Future>(&'static self, fut: F) -> InstrumentedFuture<T, F> {
-        InstrumentedFuture {
-            inner: fut,
-            future_lock: self,
-            stored_value: None,
-        }
     }
 }
 
@@ -100,13 +93,19 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-
-        let other = this.future_lock.replace(this.stored_value.take());
-
+        // Swap in future local key.
+        std::mem::swap(
+            this.stored_value,
+            &mut *this.future_lock.local_key().borrow_mut(),
+        );
+        // Poll the underlying future.
         let result = this.inner.poll(cx);
+        // Swap future local key back.
+        std::mem::swap(
+            this.stored_value,
+            &mut *this.future_lock.local_key().borrow_mut(),
+        );
 
-        let mut origin = this.future_lock.replace(other);
-        std::mem::swap(this.stored_value, &mut origin);
         result
     }
 }
@@ -189,6 +188,8 @@ mod private {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -207,19 +208,6 @@ mod tests {
 
         let s = VALUE.with_or_init(|s| s.clone(), || "Back to the future".to_owned());
         assert_eq!(s, "Back to the future");
-    }
-
-    #[test]
-    fn test_replace_stored() {
-        static VALUE: FutureLock<u64> = FutureLock::new();
-
-        VALUE.set(12);
-        let stored = VALUE.replace(None);
-        VALUE.set(32);
-        assert_eq!(*VALUE.get(), Some(32));
-
-        VALUE.replace(stored);
-        assert_eq!(*VALUE.get(), Some(12));
     }
 
     #[test]
@@ -247,6 +235,7 @@ mod tests {
             for _ in 0..42 {
                 let j = VALUE.get_or_init(|| 0);
                 VALUE.set(j + 1);
+                tokio::time::sleep(Duration::from_millis(5)).await;
             }
 
             VALUE.get().unwrap()
@@ -273,6 +262,7 @@ mod tests {
             for _ in 0..42 {
                 let j = VALUE.with(|x| *x);
                 VALUE.set(j + 1);
+                tokio::time::sleep(Duration::from_millis(5)).await;
             }
 
             VALUE.get()
@@ -281,6 +271,7 @@ mod tests {
 
         let fut_2 = async {
             VALUE.set(15);
+            tokio::time::sleep(Duration::from_millis(5)).await;
             VALUE.get()
         }
         .attach(&VALUE);
@@ -291,6 +282,7 @@ mod tests {
             tokio::spawn(
                 async {
                     VALUE.set(115);
+                    tokio::time::sleep(Duration::from_millis(5)).await;
                     VALUE.get()
                 }
                 .attach(&VALUE)
