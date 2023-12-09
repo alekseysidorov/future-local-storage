@@ -11,3 +11,4 @@ state = { version = "0.6.0", features = ["tls"] }
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread", "time"] }
+pretty_assertions = "1.4.0"

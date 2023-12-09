@@ -8,6 +8,8 @@ use std::{
 use pin_project_lite::pin_project;
 use state::LocalInitCell;
 
+mod imp;
+
 type LocalKey<T> = RefCell<Option<T>>;
 
 pub struct FutureLock<T>(LocalInitCell<LocalKey<T>>);
