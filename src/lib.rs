@@ -1,8 +1,6 @@
-use std::{cell::{Ref, RefMut}, ops::Deref};
-
-mod imp;
 mod future;
-pub mod old;
+mod imp;
+mod old;
 
 pub struct FutureOnceLock<T>(imp::FutureLocalKey<T>);
 
@@ -13,25 +11,25 @@ impl<T: Send> FutureOnceLock<T> {
     }
 
     #[inline]
-    pub fn borrow(&'static self) -> Ref<Option<T>> {
-        self.0.local_key().borrow()
+    pub fn with<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&Option<T>) -> R,
+    {
+        let value = self.0.local_key().borrow();
+        f(&value)
     }
 
     #[inline]
-    pub fn borrow_mut(&'static self) -> RefMut<Option<T>> {
-        self.0.local_key().borrow_mut()
-    }
-}
-
-impl<T: Send + Copy> FutureOnceLock<T> {
-    #[inline]
-    pub fn get(&'static self) -> Option<T> {
-        *self.borrow()
+    pub fn replace(&'static self, value: T) -> Option<T> {
+        self.0.local_key().borrow_mut().replace(value)
     }
 
     #[inline]
-    pub fn set(&'static self, value: T) {
-        self.borrow_mut().replace(value);
+    pub fn get(&'static self) -> Option<T>
+    where
+        T: Copy,
+    {
+        *self.0.local_key().borrow()
     }
 }
 
@@ -66,27 +64,25 @@ impl<T: Send> FutureLazyLock<T> {
     }
 
     #[inline]
-    pub fn borrow(&'static self) -> Ref<T> {
-        Ref::map(self.inited_local_key().borrow(), |x| x.as_ref().unwrap())
+    pub fn with<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        let value = self.inited_local_key().borrow();
+        f(value.as_ref().unwrap())
     }
 
     #[inline]
-    pub fn borrow_mut(&'static self) -> RefMut<T> {
-        RefMut::map(self.inited_local_key().borrow_mut(), |x| {
-            x.as_mut().unwrap()
-        })
-    }
-}
-
-impl<T: Send + Copy> FutureLazyLock<T> {
-    #[inline]
-    pub fn get(&'static self) -> T {
-        *self.borrow()
+    pub fn replace(&'static self, value: T) -> Option<T> {
+        self.inited_local_key().borrow_mut().replace(value)
     }
 
     #[inline]
-    pub fn set(&'static self, value: T) {
-        *self.borrow_mut() = value;
+    pub fn get(&'static self) -> T
+    where
+        T: Copy,
+    {
+        self.with(|x| *x)
     }
 }
 
@@ -98,21 +94,21 @@ mod tests {
 
     #[test]
     fn test_once_lock_trivial() {
-        static LOCK: FutureOnceLock<&str> = FutureOnceLock::new();
+        static LOCK: FutureOnceLock<String> = FutureOnceLock::new();
 
-        assert_eq!(*LOCK.borrow(), None);
-        LOCK.borrow_mut().replace("42");
-        assert_eq!(*LOCK.borrow(), Some("42"));
+        assert_eq!(LOCK.with(|x| x.clone()), None);
+        LOCK.replace("42".to_owned());
+        assert_eq!(LOCK.with(|x| x.clone()), Some("42".to_owned()));
     }
 
     #[test]
     fn test_once_lock_multiple_threads() {
         static VALUE: FutureOnceLock<u64> = FutureOnceLock::new();
-        VALUE.set(1);
+        VALUE.replace(1);
 
         let handle = std::thread::spawn(|| {
             assert_eq!(VALUE.get(), None);
-            VALUE.set(2);
+            VALUE.replace(2);
             assert_eq!(VALUE.get(), Some(2));
         });
 
@@ -126,9 +122,9 @@ mod tests {
     fn test_lazy_lock_trivial() {
         static LOCK: FutureLazyLock<&str> = FutureLazyLock::new(|| "42");
 
-        assert_eq!(*LOCK.borrow(), "42");
-        *LOCK.borrow_mut() = "abacaba";
-        assert_eq!(*LOCK.borrow(), "abacaba");
+        assert_eq!(LOCK.with(|x| *x), "42");
+        LOCK.replace("abacaba");
+        assert_eq!(LOCK.get(), "abacaba");
     }
 
     #[test]
@@ -137,7 +133,7 @@ mod tests {
 
         let handle = std::thread::spawn(|| {
             assert_eq!(VALUE.get(), 1);
-            VALUE.set(2);
+            VALUE.replace(2);
             assert_eq!(VALUE.get(), 2);
         });
 
