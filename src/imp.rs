@@ -11,10 +11,10 @@ pub type LocalKey<T> = RefCell<Option<T>>;
 /// A future local storage key which owns its content.
 ///
 /// It uses thread local storage to ensure that the each polled future has its own local storage key.
-pub struct FutureLocalKey<T: Send + 'static>(LocalInitCell<LocalKey<T>>);
+pub struct FutureLocalKey<T>(LocalInitCell<LocalKey<T>>);
 
 impl<T: Send> FutureLocalKey<T> {
-    /// Creates an empty future once cell.
+    /// Creates an empty future local key.
     pub const fn new() -> Self {
         Self(LocalInitCell::new())
     }
@@ -26,7 +26,7 @@ impl<T: Send> FutureLocalKey<T> {
     ///
     /// Using this method ensures that the local key is initialized, use only it ot access the underlying
     /// thread local key.
-    pub fn local_key(&self) -> &LocalKey<T> {
+    pub fn local_key(&'static self) -> &'static LocalKey<T> {
         if self.0.try_get().is_none() {
             self.0.set(|| RefCell::new(None));
         }
@@ -65,7 +65,6 @@ mod tests {
 
         let threads = (0..42).map(|i| {
             std::thread::spawn(move || {
-                let i = 42;
                 let mut slot = Some(i.to_string());
                 // Swap keys and make sure that the slot and key content actually has been swapped.
                 FutureLocalKey::swap(&KEY, &mut slot);

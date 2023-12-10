@@ -10,5 +10,8 @@ pin-project-lite = "0.2.13"
 state = { version = "0.6.0", features = ["tls"] }
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread", "time"] }
+tokio = { version = "1.0", features = ["macros", "rt", "rt-multi-thread"] }
 pretty_assertions = "1.4.0"
+
+[lints.clippy]
+pedantic = "warn"
