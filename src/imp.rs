@@ -11,6 +11,7 @@ pub type LocalKey<T> = RefCell<Option<T>>;
 /// A future local storage key which owns its content.
 ///
 /// It uses thread local storage to ensure that the each polled future has its own local storage key.
+// TODO Rewrite on top of unsafe cell.
 pub struct FutureLocalKey<T>(LocalInitCell<LocalKey<T>>);
 
 impl<T: Send> FutureLocalKey<T> {
