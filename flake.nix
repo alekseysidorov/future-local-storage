@@ -23,40 +23,38 @@
 
       flake = { };
 
-      perSystem = { config, self', inputs', system, nixpkgs, pkgs, ... }:
-        let
-          rustToolchain = pkgs.rust-bin.stable.latest.complete;
-        in
-        {
-          # Setup nixpkgs with overlays.
-          _module.args.pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [
-              inputs.rust-overlay.overlays.default
-            ];
-            config = { };
-          };
-
-          devShells.default = pkgs.mkShell {
-            buildInputs = [
-              rustToolchain
-            ];
-          };
-
-          treefmt.config = {
-            inherit (config.flake-root) projectRootFile;
-
-            programs.nixpkgs-fmt.enable = true;
-            programs.rustfmt = {
-              enable = true;
-              package = rustToolchain;
-            };
-            programs.beautysh.enable = true;
-            programs.deno.enable = true;
-            programs.taplo.enable = true;
-          };
-
-          formatter = config.treefmt.build.wrapper;
+      perSystem = { config, self', inputs', system, nixpkgs, pkgs, ... }: {
+        # Setup nixpkgs with overlays.
+        _module.args.pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [
+            inputs.rust-overlay.overlays.default
+            (final: prev: {
+              rustToolchain = pkgs.rust-bin.stable.latest.complete;
+            })
+          ];
         };
+
+        devShells.default = pkgs.mkShell {
+          buildInputs = [
+            pkgs.rustToolchain
+          ];
+        };
+
+        treefmt.config = {
+          inherit (config.flake-root) projectRootFile;
+
+          programs.nixpkgs-fmt.enable = true;
+          programs.rustfmt = {
+            enable = true;
+            package = pkgs.rustToolchain;
+          };
+          programs.beautysh.enable = true;
+          programs.deno.enable = true;
+          programs.taplo.enable = true;
+        };
+
+        formatter = config.treefmt.build.wrapper;
+      };
     };
 }
