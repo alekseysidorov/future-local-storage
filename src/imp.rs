@@ -49,6 +49,8 @@ impl<T: Send> Default for FutureLocalKey<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::thread::JoinHandle;
+
     use super::*;
 
     use pretty_assertions::assert_eq;
@@ -79,6 +81,6 @@ mod tests {
             })
         });
 
-        threads.into_iter().try_for_each(|x| x.join()).unwrap();
+        threads.into_iter().try_for_each(JoinHandle::join).unwrap();
     }
 }

@@ -80,6 +80,7 @@ pub struct FutureOnceLock<T>(imp::FutureLocalKey<T>);
 
 impl<T: Send> FutureOnceLock<T> {
     /// Creates an empty future once lock.
+    #[must_use]
     pub const fn new() -> Self {
         Self(imp::FutureLocalKey::new())
     }
@@ -117,9 +118,9 @@ mod tests {
     fn test_once_lock_trivial() {
         static LOCK: FutureOnceLock<String> = FutureOnceLock::new();
 
-        assert_eq!(LOCK.with(|x| x.clone()), None);
+        assert_eq!(LOCK.with(Clone::clone), None);
         LOCK.replace("42".to_owned());
-        assert_eq!(LOCK.with(|x| x.clone()), Some("42".to_owned()));
+        assert_eq!(LOCK.with(Clone::clone), Some("42".to_owned()));
     }
 
     #[test]
