@@ -1,0 +1,39 @@
+name: "Tests"
+on:
+  pull_request:
+
+jobs:
+  lints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - name: "Check formatting"
+        run: nix flake check --all-systems
+
+      - name: "Run linters"
+        run: nix develop --command ci-run-tests
+
+  tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v22
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Get branch name
+        id: branch-name
+        uses: tj-actions/branch-names@v6
+
+      - name: "Run tests"
+        run: nix develop --command ci-run-tests
+
+      - name: "Run miri tests"
+        run: nix develop --command ci-run-miri

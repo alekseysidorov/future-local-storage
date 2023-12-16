@@ -30,14 +30,44 @@
           overlays = [
             inputs.rust-overlay.overlays.default
             (final: prev: {
-              rustToolchain = pkgs.rust-bin.stable.latest.complete;
+              rustToolchains = {
+                stable = pkgs.rust-bin.stable.latest.complete;
+                nightly = pkgs.rust-bin.nightly.latest.complete;
+              };
             })
           ];
         };
 
         devShells.default = pkgs.mkShell {
-          buildInputs = [
-            pkgs.rustToolchain
+          nativeBuildInputs = with pkgs; [
+            rustToolchains.stable
+
+            (writeShellApplication {
+              name = "ci-run-tests";
+              runtimeInputs = [
+                rustToolchains.stable
+              ];
+              text = ''cargo test --all-features --all-targets'';
+            })
+            (writeShellApplication {
+              name = "ci-run-lints";
+              runtimeInputs = [
+                rustToolchains.stable
+              ];
+              text = ''cargo clippy --all-features --all --all-targets'';
+            })
+            (writeShellApplication {
+              name = "ci-run-miri";
+              runtimeInputs = [
+                rustToolchains.nightly
+              ];
+              text = ''cargo miri test --all-features --all --all-targets'';
+            })
+          ];
+        };
+        devShells.miri = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            rustToolchains.nightly
           ];
         };
 
@@ -47,7 +77,7 @@
           programs.nixpkgs-fmt.enable = true;
           programs.rustfmt = {
             enable = true;
-            package = pkgs.rustToolchain;
+            package = pkgs.rustToolchains.stable;
           };
           programs.beautysh.enable = true;
           programs.deno.enable = true;
