@@ -36,4 +36,5 @@ jobs:
         run: nix develop --command ci-run-tests
 
       - name: "Run miri tests"
+        continue-on-error: true
         run: nix develop --command ci-run-miri

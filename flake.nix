@@ -31,7 +31,12 @@
             inputs.rust-overlay.overlays.default
             (final: prev: {
               rustToolchains = {
-                stable = pkgs.rust-bin.stable.latest.complete;
+                stable = pkgs.rust-bin.stable.latest.default.override {
+                  extensions = [
+                    "rust-src"
+                    "rust-analyzer"
+                  ];
+                };
                 nightly = pkgs.rust-bin.nightly.latest.complete;
               };
             })
