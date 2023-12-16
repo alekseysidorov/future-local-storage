@@ -26,9 +26,8 @@ impl<T: Send> FutureLazyLock<T> {
     /// previously initialized.
     #[inline]
     fn inited_local_key(&'static self) -> &'static imp::LocalKey<T> {
-        let is_inited = self.inner.local_key().borrow().is_some();
         // Local key is empty only before init, so this branch runs only once.
-        if !is_inited {
+        if !self.inner.local_key().borrow().is_some() {
             let mut value = Some((self.init)());
             imp::FutureLocalKey::swap(&self.inner, &mut value);
         }
@@ -145,8 +144,8 @@ mod tests {
         static LOCK: FutureLazyLock<&str> = FutureLazyLock::new(|| "42");
 
         assert_eq!(LOCK.with(|x| *x), "42");
-        // LOCK.replace("abacaba");
-        // assert_eq!(LOCK.get(), "abacaba");
+        LOCK.replace("abacaba");
+        assert_eq!(LOCK.get(), "abacaba");
     }
 
     #[test]

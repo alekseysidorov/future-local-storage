@@ -49,7 +49,7 @@ impl<T: Send> Default for FutureLocalKey<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::thread::JoinHandle;
+    use std::{thread::JoinHandle, cell::Cell};
 
     use super::*;
 
@@ -82,5 +82,23 @@ mod tests {
         });
 
         threads.into_iter().try_for_each(JoinHandle::join).unwrap();
+    }
+
+    // Test [`state::LocalInitCell`] itself.
+    #[test]
+    fn test_local_init_cell_multiple_threads() {
+        static VALUE: LocalInitCell<Cell<usize>> = LocalInitCell::new();
+        VALUE.set(|| Cell::new(0));
+
+        let handle = std::thread::spawn(|| {
+            assert_eq!(VALUE.get().get(), 0);
+            VALUE.get().set(2);
+            assert_eq!(VALUE.get().get(), 2);
+        });
+
+        assert_eq!(VALUE.get().get(), 0);
+        handle.join().unwrap();
+        // Make sure that after the thread will be finished, the value will not change.
+        assert_eq!(VALUE.get().get(), 0);
     }
 }
