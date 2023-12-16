@@ -1,166 +1,88 @@
-pub use future::{FutureLocalStorage, InstrumentedFuture};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-mod future;
+use imp::FutureLocalKey;
+#[cfg(feature = "unstable")]
+pub use lazy_lock::FutureLazyLock;
+pub use once_lock::FutureOnceLock;
+use pin_project_lite::pin_project;
+
 mod imp;
+#[cfg(feature = "unstable")]
+mod lazy_lock;
+mod once_lock;
 
-/// A value which is initialized on the first access.
+/// Attaches future local storage to a [`Future`].
 ///
-/// Similar to [`std::cell::LazyCell`], but local to a certain future.
-pub struct FutureLazyLock<T> {
-    inner: imp::FutureLocalKey<T>,
-    // TODO Rewrite on top of unsafe cell.
-    init: fn() -> T,
+/// Extension trait allowing futures to have their own static variables.
+pub trait FutureLocalStorage: Sized + private::Sealed {
+    /// Instruments this future with the provided static value.
+    ///
+    /// Each future instance will have its own state of the attached value.
+    fn attach<T, S>(self, lock: &'static S) -> InstrumentedFuture<T, Self>
+    where
+        T: Send,
+        S: AsRef<FutureLocalKey<T>>;
 }
 
-impl<T: Send> FutureLazyLock<T> {
-    /// Creates an empty future lazy lock.
-    #[inline]
-    pub const fn new(init: fn() -> T) -> Self {
-        Self {
-            inner: imp::FutureLocalKey::new(),
-            init,
+impl<F: Future> FutureLocalStorage for F {
+    fn attach<T, S>(self, storage: &'static S) -> InstrumentedFuture<T, Self>
+    where
+        T: Send,
+        S: AsRef<FutureLocalKey<T>>,
+    {
+        InstrumentedFuture {
+            inner: self,
+            storage: storage.as_ref(),
+            stored_value: None,
         }
     }
+}
 
-    /// Returns a reference to a local key, initalizing it with the `init` if it has not been
-    /// previously initialized.
-    #[inline]
-    fn inited_local_key(&'static self) -> &'static imp::LocalKey<T> {
-        // Local key is empty only before init, so this branch runs only once.
-        if !self.inner.local_key().borrow().is_some() {
-            let mut value = Some((self.init)());
-            imp::FutureLocalKey::swap(&self.inner, &mut value);
-        }
-        self.inner.local_key()
-    }
-
-    /// Acquires a reference to the value stored in this future local storage.
-    ///
-    /// This will lazy initialize value if the future has not referenced this key yet.
-    #[inline]
-    pub fn with<F, R>(&'static self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        let value = self.inited_local_key().borrow();
-        f(value.as_ref().unwrap())
-    }
-
-    /// Replaces a value stored in this future local storage by the given one and returns the
-    /// previously stored value.
-    ///
-    /// This will lazy initialize value if the future has not referenced this key yet.
-    #[inline]
-    pub fn replace(&'static self, value: T) -> T {
-        self.inited_local_key().borrow_mut().replace(value).unwrap()
-    }
-
-    /// Sets or initializes the contained value.
-    ///
-    /// Unlike the other methods, this will not run the lazy initializer of this storage.
-    #[inline]
-    pub fn set(&'static self, value: T) {
-        self.inner.local_key().borrow_mut().replace(value);
-    }
-
-    /// Returns a copy of the contained value.
-    ///
-    /// This will lazy initialize value if the future has not referenced this key yet.
-    #[inline]
-    pub fn get(&'static self) -> T
-    where
-        T: Copy,
-    {
-        self.with(|x| *x)
+pin_project! {
+    /// A [`Future`] that has been instrumented with a [`FutureLocalStorage`].
+    pub struct InstrumentedFuture<T: 'static, F> {
+        // TODO add support to instrument Drop.
+        #[pin]
+        inner: F,
+        storage: & 'static FutureLocalKey<T>,
+        stored_value: Option<T>,
     }
 }
 
-pub struct FutureOnceLock<T>(imp::FutureLocalKey<T>);
+impl<T, F> Future for InstrumentedFuture<T, F>
+where
+    T: Send,
+    F: Future,
+{
+    type Output = F::Output;
 
-impl<T: Send> FutureOnceLock<T> {
-    /// Creates an empty future once lock.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self(imp::FutureLocalKey::new())
-    }
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        // Swap in future local key.
+        std::mem::swap(
+            this.stored_value,
+            &mut *this.storage.local_key().borrow_mut(),
+        );
+        // Poll the underlying future.
+        let result = this.inner.poll(cx);
+        // Swap future local key back.
+        std::mem::swap(
+            this.stored_value,
+            &mut *this.storage.local_key().borrow_mut(),
+        );
 
-    #[inline]
-    pub fn with<F, R>(&'static self, f: F) -> R
-    where
-        F: FnOnce(&Option<T>) -> R,
-    {
-        let value = self.0.local_key().borrow();
-        f(&value)
-    }
-
-    #[inline]
-    pub fn replace(&'static self, value: T) -> Option<T> {
-        self.0.local_key().borrow_mut().replace(value)
-    }
-
-    #[inline]
-    pub fn get(&'static self) -> Option<T>
-    where
-        T: Copy,
-    {
-        *self.0.local_key().borrow()
+        result
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod private {
+    use std::future::Future;
 
-    use pretty_assertions::assert_eq;
+    pub trait Sealed {}
 
-    #[test]
-    fn test_once_lock_trivial() {
-        static LOCK: FutureOnceLock<String> = FutureOnceLock::new();
-
-        assert_eq!(LOCK.with(Clone::clone), None);
-        LOCK.replace("42".to_owned());
-        assert_eq!(LOCK.with(Clone::clone), Some("42".to_owned()));
-    }
-
-    #[test]
-    fn test_once_lock_multiple_threads() {
-        static VALUE: FutureOnceLock<u64> = FutureOnceLock::new();
-        VALUE.replace(1);
-
-        let handle = std::thread::spawn(|| {
-            assert_eq!(VALUE.get(), None);
-            VALUE.replace(2);
-            assert_eq!(VALUE.get(), Some(2));
-        });
-
-        assert_eq!(VALUE.get(), Some(1));
-        handle.join().unwrap();
-
-        assert_eq!(VALUE.get(), Some(1));
-    }
-
-    #[test]
-    fn test_lazy_lock_trivial() {
-        static LOCK: FutureLazyLock<&str> = FutureLazyLock::new(|| "42");
-
-        assert_eq!(LOCK.with(|x| *x), "42");
-        LOCK.replace("abacaba");
-        assert_eq!(LOCK.get(), "abacaba");
-    }
-
-    #[test]
-    fn test_lazy_lock_multiple_threads() {
-        static VALUE: FutureLazyLock<u64> = FutureLazyLock::new(|| 1);
-
-        let handle = std::thread::spawn(|| {
-            assert_eq!(VALUE.get(), 1);
-            VALUE.replace(2);
-            assert_eq!(VALUE.get(), 2);
-        });
-
-        assert_eq!(VALUE.get(), 1);
-        handle.join().unwrap();
-        // Make sure that after the thread will be finished, the value will not change.
-        assert_eq!(VALUE.get(), 1);
-    }
+    impl<F: Future> Sealed for F {}
 }

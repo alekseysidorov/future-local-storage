@@ -1,6 +1,6 @@
 //! Low-level implementation details
 
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt::Debug};
 
 use state::LocalInitCell;
 
@@ -14,12 +14,15 @@ pub type LocalKey<T> = RefCell<Option<T>>;
 // TODO Rewrite on top of unsafe cell.
 pub struct FutureLocalKey<T>(LocalInitCell<LocalKey<T>>);
 
-impl<T: Send> FutureLocalKey<T> {
+impl<T> FutureLocalKey<T> {
     /// Creates an empty future local key.
+    #[inline]
     pub const fn new() -> Self {
         Self(LocalInitCell::new())
     }
+}
 
+impl<T: Send + 'static> FutureLocalKey<T> {
     /// Returns a reference to the underlying thread local storage key, and if it has not been initalized,
     /// initializes it with the `None` value.
     ///
@@ -27,29 +30,34 @@ impl<T: Send> FutureLocalKey<T> {
     ///
     /// Using this method ensures that the local key is initialized, use only it ot access the underlying
     /// thread local key.
+    #[inline]
     pub fn local_key(&'static self) -> &'static LocalKey<T> {
-        if self.0.try_get().is_none() {
-            self.0.set(|| RefCell::new(None));
-        }
-
+        self.0.set(|| RefCell::new(None));
         self.0.get()
     }
 
     /// Swaps the underlying value and the given one, without deinitializing either one.
+    #[inline]
     pub fn swap(this: &'static Self, other: &mut Option<T>) {
         std::mem::swap(other, &mut *this.local_key().borrow_mut());
     }
 }
 
-impl<T: Send> Default for FutureLocalKey<T> {
+impl<T: Send + 'static> Default for FutureLocalKey<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
+impl<T: Send + 'static + Debug> Debug for FutureLocalKey<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FutureLocalKey").field(&self.0).finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::{thread::JoinHandle, cell::Cell};
+    use std::{cell::Cell, thread::JoinHandle};
 
     use super::*;
 
