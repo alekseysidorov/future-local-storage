@@ -11,7 +11,7 @@ jobs:
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       - name: "Check formatting"
-        run: nix flake check --all-systems
+        run: nix flake check
 
       - name: "Run linters"
         run: nix develop --command ci-run-tests

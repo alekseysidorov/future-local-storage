@@ -35,6 +35,7 @@
                   extensions = [
                     "rust-src"
                     "rust-analyzer"
+                    "llvm-tools"
                   ];
                 };
                 nightly = pkgs.rust-bin.nightly.latest.complete;
