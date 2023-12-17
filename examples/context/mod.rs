@@ -47,8 +47,8 @@ impl TracerContext {
     where
         F: Future<Output = R>,
     {
-        let result = future.with_scope(&CONTEXT, Self::new()).await;
-        (CONTEXT.take().unwrap().traces.take(), result)
+        let (this, result) = future.with_scope(&CONTEXT, Self::new()).with_value().await;
+        (this.traces.take(), result)
     }
 
     fn new() -> Self {

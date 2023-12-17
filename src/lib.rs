@@ -40,24 +40,24 @@ impl<T: Send + 'static> FutureOnceLock<T> {
             .expect("cannot access a future local value without setting it first"))
     }
 
+    /// Returns a copy of the contained value.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the future local doesn't have a value set.
     #[inline]
-    pub fn take(&'static self) -> Option<T> {
-        self.0.local_key().borrow_mut().take()
-    }
-
-    #[inline]
-    pub fn get(&'static self) -> Option<T>
+    pub fn get(&'static self) -> T
     where
         T: Copy,
     {
-        *self.0.local_key().borrow()
+        self.0.local_key().borrow().unwrap()
     }
 
     /// Sets a value `T` as the future-local value for the future `F`.
     ///
     /// On completion of `scope`, the future-local value will be dropped.
     #[inline]
-    pub fn scope<F>(&'static self, value: T, future: F) -> InstrumentedFuture<T, F>
+    pub fn scope<F>(&'static self, value: T, future: F) -> ScopedFuture<T, F>
     where
         F: Future,
     {
@@ -77,37 +77,70 @@ impl<T> AsRef<FutureLocalKey<T>> for FutureOnceLock<T> {
     }
 }
 
-/// Attaches future local storage to a [`Future`].
+/// Attaches future local storage values to a [`Future`].
 ///
 /// Extension trait allowing futures to have their own static variables.
 pub trait FutureLocalStorage: Future + Sized + private::Sealed {
-    /// Instruments this future in scope of the provided static value.
+    /// Sets a given value as the future local value of this future.
     ///
     /// Each future instance will have its own state of the attached value.
-    fn with_scope<T, S>(self, scope: &'static S, value: T) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>;
 }
 
 impl<F: Future> FutureLocalStorage for F {
-    fn with_scope<T, S>(self, scope: &'static S, value: T) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>,
     {
         let scope = scope.as_ref();
-        InstrumentedFuture {
+        ScopedFutureWithValue {
             inner: self,
             scope,
             value: Some(value),
         }
+        .into()
     }
 }
 
-/// A [`Future`] that has been instrumented with a [`FutureLocalStorage`].
+/// A [`Future`] that sets a value `T` of a future local for the future `F` during its execution.
+#[pin_project]
+pub struct ScopedFuture<T, F>(#[pin] ScopedFutureWithValue<T, F>)
+where
+    T: Send + 'static,
+    F: Future;
+
+impl<T, F> Future for ScopedFuture<T, F>
+where
+    T: Send,
+    F: Future,
+{
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        self.project().0.poll(cx).map(|(_value, result)| result)
+    }
+}
+
+impl<T, F> ScopedFuture<T, F>
+where
+    T: Send,
+    F: Future,
+{
+    /// Extends the output of future with the future local value scoped to this future.
+    pub fn with_value(self) -> ScopedFutureWithValue<T, F> {
+        self.0
+    }
+}
+
+/// A [`Future`] that sets a value `T` of a future local for the future `F` during its execution.
+///
+/// Unlike the [`ScopedFuture`] this future also returns a scoped future local value after execution.
 #[pin_project(PinnedDrop)]
-pub struct InstrumentedFuture<T, F>
+pub struct ScopedFutureWithValue<T, F>
 where
     T: Send + 'static,
     F: Future,
@@ -120,24 +153,20 @@ where
 }
 
 #[pinned_drop]
-impl<T, F> PinnedDrop for InstrumentedFuture<T, F>
+impl<T, F> PinnedDrop for ScopedFutureWithValue<T, F>
 where
     F: Future,
     T: Send + 'static,
 {
-    fn drop(self: Pin<&mut Self>) {
-        let this = self.project();
-        // TODO
-        FutureLocalKey::swap(this.scope, this.value);
-    }
+    fn drop(self: Pin<&mut Self>) {}
 }
 
-impl<T, F> Future for InstrumentedFuture<T, F>
+impl<T, F> Future for ScopedFutureWithValue<T, F>
 where
     T: Send,
     F: Future,
 {
-    type Output = F::Output;
+    type Output = (T, F::Output);
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -148,7 +177,20 @@ where
         // Swap future local key back.
         FutureLocalKey::swap(this.scope, this.value);
 
-        result
+        let result = std::task::ready!(result);
+        // Take the scoped value to return it back to the future caller.
+        let value = this.value.take().unwrap();
+        Poll::Ready((value, result))
+    }
+}
+
+impl<T, F> From<ScopedFutureWithValue<T, F>> for ScopedFuture<T, F>
+where
+    T: Send,
+    F: Future,
+{
+    fn from(value: ScopedFutureWithValue<T, F>) -> Self {
+        Self(value)
     }
 }
 
