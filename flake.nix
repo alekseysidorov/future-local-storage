@@ -54,7 +54,10 @@
               runtimeInputs = [
                 rustToolchains.stable
               ];
-              text = ''cargo clippy --all-features --all --all-targets'';
+              text = ''
+                cargo clippy --all-features --all --all-targets
+                cargo doc --all-features  --no-deps
+              '';
             })
             (writeShellApplication {
               name = "ci-run-miri";
@@ -80,7 +83,7 @@
           programs.nixpkgs-fmt.enable = true;
           programs.rustfmt = {
             enable = true;
-            package = pkgs.rustToolchains.stable;
+            package = pkgs.rustToolchains.nightly;
           };
           programs.beautysh.enable = true;
           programs.deno.enable = true;

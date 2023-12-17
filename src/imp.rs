@@ -1,4 +1,4 @@
-//! Low-level implementation details
+//! Low-level implementation details.
 
 use std::{cell::RefCell, fmt::Debug};
 
@@ -59,9 +59,9 @@ impl<T: Send + 'static + Debug> Debug for FutureLocalKey<T> {
 mod tests {
     use std::{cell::Cell, thread::JoinHandle};
 
-    use super::*;
-
     use pretty_assertions::assert_eq;
+
+    use super::*;
 
     #[test]
     fn test_future_local_key_init() {
