@@ -67,7 +67,6 @@
               ];
               text = ''
                 cargo miri test --all-features --all --all-targets
-                cargo miri run --example async_tracer
               '';
             })
           ];
