@@ -48,6 +48,7 @@
           nativeBuildInputs = with pkgs; [
             rustToolchains.stable
 
+            # Scripts used in CI
             (writeShellApplication {
               name = "ci-run-tests";
               runtimeInputs = [
@@ -60,14 +61,19 @@
               runtimeInputs = [
                 rustToolchains.stable
               ];
-              text = ''cargo clippy --all-features --all --all-targets'';
+              text = ''
+                cargo clippy --all-features --all --all-targets
+                cargo doc --all-features  --no-deps
+              '';
             })
             (writeShellApplication {
-              name = "ci-run-miri";
+              name = "ci-run-miri-tests";
               runtimeInputs = [
                 rustToolchains.nightly
               ];
-              text = ''cargo miri test --all-features --all --all-targets'';
+              text = ''
+                cargo miri test --all-features --all --all-targets
+              '';
             })
           ];
         };
@@ -83,7 +89,7 @@
           programs.nixpkgs-fmt.enable = true;
           programs.rustfmt = {
             enable = true;
-            package = pkgs.rustToolchains.stable;
+            package = pkgs.rustToolchains.nightly;
           };
           programs.beautysh.enable = true;
           programs.deno.enable = true;

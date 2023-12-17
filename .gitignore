@@ -21,3 +21,6 @@ Cargo.lock
 
 # Nix files
 .direnv/
+
+# IDE
+.vscode/
