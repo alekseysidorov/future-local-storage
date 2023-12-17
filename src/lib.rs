@@ -1,5 +1,6 @@
 use std::{
     future::Future,
+    mem::ManuallyDrop,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -8,7 +9,7 @@ use imp::FutureLocalKey;
 #[cfg(feature = "unstable")]
 pub use lazy_lock::FutureLazyLock;
 pub use once_lock::FutureOnceLock;
-use pin_project_lite::pin_project;
+use pin_project::{pin_project, pinned_drop};
 
 mod imp;
 #[cfg(feature = "unstable")]
@@ -18,7 +19,7 @@ mod once_lock;
 /// Attaches future local storage to a [`Future`].
 ///
 /// Extension trait allowing futures to have their own static variables.
-pub trait FutureLocalStorage: Sized + private::Sealed {
+pub trait FutureLocalStorage: Future + Sized + private::Sealed {
     /// Instruments this future with the provided static value.
     ///
     /// Each future instance will have its own state of the attached value.
@@ -34,22 +35,43 @@ impl<F: Future> FutureLocalStorage for F {
         T: Send,
         S: AsRef<FutureLocalKey<T>>,
     {
-        InstrumentedFuture {
+        let storage = storage.as_ref();
+        let mut future = InstrumentedFuture {
             inner: self,
-            storage: storage.as_ref(),
+            storage,
             stored_value: None,
-        }
+        };
+        // Take a value from a future local key in order to set it again when future will
+        // be polled.
+        FutureLocalKey::swap(storage, &mut future.stored_value);
+        future
     }
 }
 
-pin_project! {
-    /// A [`Future`] that has been instrumented with a [`FutureLocalStorage`].
-    pub struct InstrumentedFuture<T: 'static, F> {
-        // TODO add support to instrument Drop.
-        #[pin]
-        inner: F,
-        storage: & 'static FutureLocalKey<T>,
-        stored_value: Option<T>,
+/// A [`Future`] that has been instrumented with a [`FutureLocalStorage`].
+#[pin_project(PinnedDrop)]
+pub struct InstrumentedFuture<T, F>
+where
+    T: Send + 'static,
+    F: Future,
+{
+    // TODO add support to instrument Drop.
+    #[pin]
+    inner: F,
+    storage: &'static FutureLocalKey<T>,
+    stored_value: Option<T>,
+}
+
+#[pinned_drop]
+impl<T, F> PinnedDrop for InstrumentedFuture<T, F>
+where
+    F: Future,
+    T: Send + 'static,
+{
+    fn drop(self: Pin<&mut Self>) {
+        let this = self.project();
+        // TODO
+        FutureLocalKey::swap(this.storage, this.stored_value);
     }
 }
 
@@ -63,17 +85,11 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         // Swap in future local key.
-        std::mem::swap(
-            this.stored_value,
-            &mut *this.storage.local_key().borrow_mut(),
-        );
+        FutureLocalKey::swap(this.storage, this.stored_value);
         // Poll the underlying future.
         let result = this.inner.poll(cx);
         // Swap future local key back.
-        std::mem::swap(
-            this.stored_value,
-            &mut *this.storage.local_key().borrow_mut(),
-        );
+        FutureLocalKey::swap(this.storage, this.stored_value);
 
         result
     }

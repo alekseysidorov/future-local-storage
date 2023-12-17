@@ -14,9 +14,9 @@ impl<T> FutureOnceLock<T> {
 
 impl<T: Send + 'static> FutureOnceLock<T> {
     #[inline]
-    pub fn with<F, R>(&'static self, f: F) -> R
+    pub fn with<F, R>(&'static self, mut f: F) -> R
     where
-        F: FnOnce(&Option<T>) -> R,
+        F: FnMut(&Option<T>) -> R,
     {
         let value = self.0.local_key().borrow();
         f(&value)
@@ -25,6 +25,11 @@ impl<T: Send + 'static> FutureOnceLock<T> {
     #[inline]
     pub fn replace(&'static self, value: T) -> Option<T> {
         self.0.local_key().borrow_mut().replace(value)
+    }
+
+    #[inline]
+    pub fn swap(&'static self, content: &mut Option<T>) {
+        FutureLocalKey::swap(&self.0, content);
     }
 
     #[inline]
