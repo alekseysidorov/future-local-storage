@@ -47,8 +47,7 @@ impl TracerContext {
     where
         F: Future<Output = R>,
     {
-        CONTEXT.replace(Self::new());
-        let result = future.with_scope(&CONTEXT).await;
+        let result = future.with_scope(&CONTEXT, Self::new()).await;
         (CONTEXT.take().unwrap().traces.take(), result)
     }
 
@@ -62,7 +61,7 @@ impl TracerContext {
     }
 
     fn with<R, F: FnOnce(&Self) -> R>(scope: F) -> R {
-        CONTEXT.with(|tracer| scope(tracer.as_ref().unwrap()))
+        CONTEXT.with(|tracer| scope(tracer))
     }
 
     fn add_entry(&self, event: impl Display, message: impl Display) {

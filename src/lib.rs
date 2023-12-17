@@ -5,14 +5,10 @@ use std::{
 };
 
 use imp::FutureLocalKey;
-#[cfg(feature = "unstable")]
-pub use lazy_lock::FutureLazyLock;
 pub use once_lock::FutureOnceLock;
 use pin_project::{pin_project, pinned_drop};
 
 mod imp;
-#[cfg(feature = "unstable")]
-mod lazy_lock;
 mod once_lock;
 
 /// Attaches future local storage to a [`Future`].
@@ -22,28 +18,24 @@ pub trait FutureLocalStorage: Future + Sized + private::Sealed {
     /// Instruments this future in scope of the provided static value.
     ///
     /// Each future instance will have its own state of the attached value.
-    fn with_scope<T, S>(self, lock: &'static S) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> InstrumentedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>;
 }
 
 impl<F: Future> FutureLocalStorage for F {
-    fn with_scope<T, S>(self, storage: &'static S) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> InstrumentedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>,
     {
-        let storage = storage.as_ref();
-        let mut future = InstrumentedFuture {
+        let scope = scope.as_ref();
+        InstrumentedFuture {
             inner: self,
-            storage,
-            stored_value: None,
-        };
-        // Take a value from a future local key in order to set it again when future will
-        // be polled.
-        FutureLocalKey::swap(storage, &mut future.stored_value);
-        future
+            scope,
+            value: Some(value),
+        }
     }
 }
 
@@ -57,8 +49,8 @@ where
     // TODO Implement manually drop to provide scope access to the future Drop.
     #[pin]
     inner: F,
-    storage: &'static FutureLocalKey<T>,
-    stored_value: Option<T>,
+    scope: &'static FutureLocalKey<T>,
+    value: Option<T>,
 }
 
 #[pinned_drop]
@@ -70,7 +62,7 @@ where
     fn drop(self: Pin<&mut Self>) {
         let this = self.project();
         // TODO
-        FutureLocalKey::swap(this.storage, this.stored_value);
+        FutureLocalKey::swap(this.scope, this.value);
     }
 }
 
@@ -84,11 +76,11 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         // Swap in future local key.
-        FutureLocalKey::swap(this.storage, this.stored_value);
+        FutureLocalKey::swap(this.scope, this.value);
         // Poll the underlying future.
         let result = this.inner.poll(cx);
         // Swap future local key back.
-        FutureLocalKey::swap(this.storage, this.stored_value);
+        FutureLocalKey::swap(this.scope, this.value);
 
         result
     }

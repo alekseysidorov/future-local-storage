@@ -7,7 +7,6 @@ edition = "2021"
 
 [features]
 default = []
-unstable = []
 
 [dependencies]
 pin-project = "1.1.3"

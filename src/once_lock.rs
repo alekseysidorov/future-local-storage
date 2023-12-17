@@ -16,18 +16,23 @@ impl<T> FutureOnceLock<T> {
 }
 
 impl<T: Send + 'static> FutureOnceLock<T> {
+    /// Acquires a reference to the value in this future local storage.
+    ///
+    /// Unlike the [`std::thread::LocalKey::with`] this method does not initialize the value
+    /// when called.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if the future local doesn't have a value set.
     #[inline]
     pub fn with<F, R>(&'static self, f: F) -> R
     where
-        F: FnOnce(&Option<T>) -> R,
+        F: FnOnce(&T) -> R,
     {
         let value = self.0.local_key().borrow();
-        f(&value)
-    }
-
-    #[inline]
-    pub fn replace(&'static self, value: T) -> Option<T> {
-        self.0.local_key().borrow_mut().replace(value)
+        f(value
+            .as_ref()
+            .expect("cannot access a future local value without setting it first"))
     }
 
     #[inline]
@@ -44,15 +49,14 @@ impl<T: Send + 'static> FutureOnceLock<T> {
     }
 
     /// Sets a value `T` as the future-local value for the future `F`.
-    /// 
+    ///
     /// On completion of `scope`, the future-local value will be dropped.
     #[inline]
     pub fn scope<F>(&'static self, value: T, future: F) -> InstrumentedFuture<T, F>
     where
         F: Future,
     {
-        self.replace(value);
-        future.with_scope(self)
+        future.with_scope(self, value)
     }
 }
 
@@ -76,13 +80,24 @@ mod tests {
 
     use super::*;
 
+    impl<T: Send + 'static> FutureOnceLock<T> {
+        fn replace(&'static self, value: T) -> Option<T> {
+            self.0.local_key().borrow_mut().replace(value)
+        }
+
+        fn set(&'static self, value: T) {
+            self.replace(value);
+        }
+    }
+
     #[test]
     fn test_once_lock_trivial() {
         static LOCK: FutureOnceLock<String> = FutureOnceLock::new();
+        LOCK.set("0".to_owned());
 
-        assert_eq!(LOCK.with(Clone::clone), None);
-        LOCK.replace("42".to_owned());
-        assert_eq!(LOCK.with(Clone::clone), Some("42".to_owned()));
+        assert_eq!(LOCK.with(Clone::clone), "0".to_owned());
+        LOCK.set("42".to_owned());
+        assert_eq!(LOCK.with(Clone::clone), "42".to_owned());
     }
 
     #[test]
@@ -108,33 +123,23 @@ mod tests {
 
         let fut_1 = async {
             for _ in 0..42 {
-                let j = VALUE.with(|x| x.unwrap_or_default());
+                let j = VALUE.with(Clone::clone);
                 VALUE.replace(j + 1);
                 tokio::task::yield_now().await;
             }
 
             VALUE.get().unwrap()
         }
-        .with_scope(&VALUE);
+        .with_scope(&VALUE, 0);
 
-        let fut_2 = async {
-            VALUE.replace(15);
-            VALUE.get().unwrap()
-        }
-        .with_scope(&VALUE);
+        let fut_2 = async { VALUE.get().unwrap() }.with_scope(&VALUE, 15);
 
         assert_eq!(fut_1.await, 42);
         assert_eq!(fut_2.await, 15);
         assert_eq!(
-            tokio::spawn(
-                async {
-                    VALUE.replace(115);
-                    VALUE.get().unwrap()
-                }
-                .with_scope(&VALUE)
-            )
-            .await
-            .unwrap(),
+            tokio::spawn(async { VALUE.get().unwrap() }.with_scope(&VALUE, 115))
+                .await
+                .unwrap(),
             115
         );
     }
