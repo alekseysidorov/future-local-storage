@@ -11,7 +11,6 @@ pub type LocalKey<T> = RefCell<Option<T>>;
 /// A future local storage key which owns its content.
 ///
 /// It uses thread local storage to ensure that the each polled future has its own local storage key.
-// TODO Rewrite on top of unsafe cell.
 pub struct FutureLocalKey<T>(LocalInitCell<LocalKey<T>>);
 
 impl<T> FutureLocalKey<T> {
@@ -40,12 +39,6 @@ impl<T: Send + 'static> FutureLocalKey<T> {
     #[inline]
     pub fn swap(this: &'static Self, other: &mut Option<T>) {
         std::mem::swap(other, &mut *this.local_key().borrow_mut());
-    }
-}
-
-impl<T: Send + 'static> Default for FutureLocalKey<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

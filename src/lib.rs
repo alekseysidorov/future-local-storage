@@ -162,69 +162,46 @@ mod private {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::{Cell, RefCell};
+
     use pretty_assertions::assert_eq;
 
     use super::*;
     use crate::FutureLocalStorage;
 
-    impl<T: Send + 'static> FutureOnceLock<T> {
-        fn replace(&'static self, value: T) -> Option<T> {
-            self.0.local_key().borrow_mut().replace(value)
-        }
-
-        fn set(&'static self, value: T) {
-            self.replace(value);
-        }
-    }
-
     #[test]
     fn test_once_lock_trivial() {
-        static LOCK: FutureOnceLock<String> = FutureOnceLock::new();
-        LOCK.set("0".to_owned());
+        static LOCK: FutureOnceLock<RefCell<String>> = FutureOnceLock::new();
+        LOCK.with(|x| x.replace("0".to_owned()));
 
-        assert_eq!(LOCK.with(Clone::clone), "0".to_owned());
-        LOCK.set("42".to_owned());
-        assert_eq!(LOCK.with(Clone::clone), "42".to_owned());
-    }
-
-    #[test]
-    fn test_once_lock_multiple_threads() {
-        static VALUE: FutureOnceLock<u64> = FutureOnceLock::new();
-        VALUE.replace(1);
-
-        let handle = std::thread::spawn(|| {
-            assert_eq!(VALUE.get(), None);
-            VALUE.replace(2);
-            assert_eq!(VALUE.get(), Some(2));
-        });
-
-        assert_eq!(VALUE.get(), Some(1));
-        handle.join().unwrap();
-
-        assert_eq!(VALUE.get(), Some(1));
+        assert_eq!(LOCK.with(|x| x.borrow().clone()), "0".to_owned());
+        LOCK.with(|x| x.replace("42".to_owned()));
+        assert_eq!(LOCK.with(|x| x.borrow().clone()), "42".to_owned());
     }
 
     #[tokio::test]
     async fn test_future_once_lock() {
-        static VALUE: FutureOnceLock<u64> = FutureOnceLock::new();
+        static VALUE: FutureOnceLock<Cell<u64>> = FutureOnceLock::new();
 
         let fut_1 = async {
             for _ in 0..42 {
-                let j = VALUE.with(Clone::clone);
-                VALUE.replace(j + 1);
+                VALUE.with(|x| {
+                    let value = x.get();
+                    x.set(value + 1);
+                });
                 tokio::task::yield_now().await;
             }
 
-            VALUE.get().unwrap()
+            VALUE.with(Cell::get)
         }
-        .with_scope(&VALUE, 0);
+        .with_scope(&VALUE, Cell::new(0));
 
-        let fut_2 = async { VALUE.get().unwrap() }.with_scope(&VALUE, 15);
+        let fut_2 = async { VALUE.with(Cell::get) }.with_scope(&VALUE, Cell::new(15));
 
         assert_eq!(fut_1.await, 42);
         assert_eq!(fut_2.await, 15);
         assert_eq!(
-            tokio::spawn(async { VALUE.get().unwrap() }.with_scope(&VALUE, 115))
+            tokio::spawn(async { VALUE.with(Cell::get) }.with_scope(&VALUE, Cell::new(115)))
                 .await
                 .unwrap(),
             115

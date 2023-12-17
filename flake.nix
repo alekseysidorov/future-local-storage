@@ -42,6 +42,7 @@
           nativeBuildInputs = with pkgs; [
             rustToolchains.stable
 
+            # Scripts used in CI
             (writeShellApplication {
               name = "ci-run-tests";
               runtimeInputs = [
@@ -60,7 +61,7 @@
               '';
             })
             (writeShellApplication {
-              name = "ci-run-miri";
+              name = "ci-run-miri-tests";
               runtimeInputs = [
                 rustToolchains.nightly
               ];
