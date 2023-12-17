@@ -57,7 +57,7 @@ impl<T: Send + 'static> FutureOnceLock<T> {
     ///
     /// On completion of `scope`, the future-local value will be dropped.
     #[inline]
-    pub fn scope<F>(&'static self, value: T, future: F) -> ScopedFuture<T, F>
+    pub fn scope<F>(&'static self, value: T, future: F) -> ScopedFutureWithValue<T, F>
     where
         F: Future,
     {
@@ -84,14 +84,14 @@ pub trait FutureLocalStorage: Future + Sized + private::Sealed {
     /// Sets a given value as the future local value of this future.
     ///
     /// Each future instance will have its own state of the attached value.
-    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFutureWithValue<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>;
 }
 
 impl<F: Future> FutureLocalStorage for F {
-    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFuture<T, Self>
+    fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFutureWithValue<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>,
@@ -102,11 +102,12 @@ impl<F: Future> FutureLocalStorage for F {
             scope,
             value: Some(value),
         }
-        .into()
     }
 }
 
 /// A [`Future`] that sets a value `T` of a future local for the future `F` during its execution.
+///
+/// Unlike the [`ScopedFutureWithValue`] this future discards the future local value.
 #[pin_project]
 pub struct ScopedFuture<T, F>(#[pin] ScopedFutureWithValue<T, F>)
 where
@@ -125,20 +126,20 @@ where
     }
 }
 
-impl<T, F> ScopedFuture<T, F>
+impl<T, F> ScopedFutureWithValue<T, F>
 where
     T: Send,
     F: Future,
 {
-    /// Extends the output of future with the future local value scoped to this future.
-    pub fn with_value(self) -> ScopedFutureWithValue<T, F> {
-        self.0
+    /// Discards the future local value from the future output.
+    pub fn without_value(self) -> ScopedFuture<T, F> {
+        ScopedFuture(self)
     }
 }
 
 /// A [`Future`] that sets a value `T` of a future local for the future `F` during its execution.
 ///
-/// Unlike the [`ScopedFuture`] this future also returns a scoped future local value after execution.
+/// This future also returns a future local value after execution.
 #[pin_project(PinnedDrop)]
 pub struct ScopedFutureWithValue<T, F>
 where
@@ -239,16 +240,23 @@ mod tests {
 
             VALUE.with(Cell::get)
         }
-        .with_scope(&VALUE, Cell::new(0));
+        .with_scope(&VALUE, Cell::new(0))
+        .without_value();
 
-        let fut_2 = async { VALUE.with(Cell::get) }.with_scope(&VALUE, Cell::new(15));
+        let fut_2 = async { VALUE.with(Cell::get) }
+            .with_scope(&VALUE, Cell::new(15))
+            .without_value();
 
         assert_eq!(fut_1.await, 42);
         assert_eq!(fut_2.await, 15);
         assert_eq!(
-            tokio::spawn(async { VALUE.with(Cell::get) }.with_scope(&VALUE, Cell::new(115)))
-                .await
-                .unwrap(),
+            tokio::spawn(
+                async { VALUE.with(Cell::get) }
+                    .with_scope(&VALUE, Cell::new(115))
+                    .without_value()
+            )
+            .await
+            .unwrap(),
             115
         );
     }
