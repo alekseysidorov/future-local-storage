@@ -1,6 +1,9 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, future::Future};
 
-use crate::imp::{self, FutureLocalKey};
+use crate::{
+    imp::{self, FutureLocalKey},
+    FutureLocalStorage, InstrumentedFuture,
+};
 
 pub struct FutureOnceLock<T>(imp::FutureLocalKey<T>);
 
@@ -28,8 +31,8 @@ impl<T: Send + 'static> FutureOnceLock<T> {
     }
 
     #[inline]
-    pub fn swap(&'static self, content: &mut Option<T>) {
-        FutureLocalKey::swap(&self.0, content);
+    pub fn take(&'static self) -> Option<T> {
+        self.0.local_key().borrow_mut().take()
     }
 
     #[inline]
@@ -38,6 +41,18 @@ impl<T: Send + 'static> FutureOnceLock<T> {
         T: Copy,
     {
         *self.0.local_key().borrow()
+    }
+
+    /// Sets a value `T` as the future-local value for the future `F`.
+    /// 
+    /// On completion of `scope`, the future-local value will be dropped.
+    #[inline]
+    pub fn scope<F>(&'static self, value: T, future: F) -> InstrumentedFuture<T, F>
+    where
+        F: Future,
+    {
+        self.replace(value);
+        future.with_scope(self)
     }
 }
 

@@ -47,13 +47,9 @@ impl TracerContext {
     where
         F: Future<Output = R>,
     {
-        let mut this = Some(Self::new());
-        CONTEXT.swap(&mut this);
-
+        CONTEXT.replace(Self::new());
         let result = future.with_scope(&CONTEXT).await;
-
-        CONTEXT.swap(&mut this);
-        (this.unwrap().traces.take(), result)
+        (CONTEXT.take().unwrap().traces.take(), result)
     }
 
     fn new() -> Self {
