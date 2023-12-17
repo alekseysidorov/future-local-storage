@@ -1,6 +1,5 @@
 use std::{
     future::Future,
-    mem::ManuallyDrop,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -20,17 +19,17 @@ mod once_lock;
 ///
 /// Extension trait allowing futures to have their own static variables.
 pub trait FutureLocalStorage: Future + Sized + private::Sealed {
-    /// Instruments this future with the provided static value.
+    /// Instruments this future in scope of the provided static value.
     ///
     /// Each future instance will have its own state of the attached value.
-    fn attach<T, S>(self, lock: &'static S) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, lock: &'static S) -> InstrumentedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>;
 }
 
 impl<F: Future> FutureLocalStorage for F {
-    fn attach<T, S>(self, storage: &'static S) -> InstrumentedFuture<T, Self>
+    fn with_scope<T, S>(self, storage: &'static S) -> InstrumentedFuture<T, Self>
     where
         T: Send,
         S: AsRef<FutureLocalKey<T>>,
@@ -55,7 +54,7 @@ where
     T: Send + 'static,
     F: Future,
 {
-    // TODO add support to instrument Drop.
+    // TODO Implement manually drop to provide scope access to the future Drop.
     #[pin]
     inner: F,
     storage: &'static FutureLocalKey<T>,

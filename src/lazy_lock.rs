@@ -121,7 +121,6 @@ mod tests {
         assert_eq!(VALUE.get(), 1);
     }
 
-
     #[tokio::test]
     async fn test_future_lazy() {
         static VALUE: FutureLazyLock<i32> = FutureLazyLock::new(|| -1);
@@ -135,14 +134,14 @@ mod tests {
 
             VALUE.get()
         }
-        .attach(&VALUE);
+        .with_scope(&VALUE);
 
         let fut_2 = async {
             VALUE.replace(15);
             tokio::task::yield_now().await;
             VALUE.get()
         }
-        .attach(&VALUE);
+        .with_scope(&VALUE);
 
         assert_eq!(fut_1.await, 41);
         assert_eq!(fut_2.await, 15);
@@ -153,7 +152,7 @@ mod tests {
                     tokio::task::yield_now().await;
                     VALUE.get()
                 }
-                .attach(&VALUE)
+                .with_scope(&VALUE)
             )
             .await
             .unwrap(),

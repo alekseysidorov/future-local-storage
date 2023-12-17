@@ -1,56 +1,58 @@
-use std::{cell::RefCell, fmt::Display, time::Duration};
+use std::{fmt::Display, time::Duration};
 
 use context::TracerContext;
 
 mod context;
 
 async fn second_long_computation(a: u64) -> u64 {
-    TracerContext::in_scope(|context| {
-        context.trace(format!("[Entered] `second_long_computation` with params: a={a}"));
-    });
-    
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    TracerContext::on_enter(format!("`second_long_computation` with params: a={a}"));
 
-    TracerContext::in_scope(|context| {
-        context.trace("[Exited] `second_long_computation`");
-    });
+    // Imitate a CPU-intensive computation.
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(10));
+        tokio::task::yield_now().await;
+    }
+
+    TracerContext::on_exit("`second_long_computation`");
     a * 32
 }
 
 async fn first_computation(a: u64) -> u64 {
-    TracerContext::in_scope(|context| {
-        context.trace(format!("[Entered] `first_computation` with params: a={a}"));
-    });
+    TracerContext::on_enter(format!("`first_computation` with params: a={a}"));
 
     tokio::task::yield_now().await;
 
-    TracerContext::in_scope(|context| {
-        context.trace("[Exited] `first_computation`");
-    });
+    TracerContext::on_exit("`first_computation`");
     a + 2
 }
 
 async fn some_method(name: impl Display, mut a: u64) -> u64 {
-    TracerContext::in_scope(|context| {
-        context.trace(format!("[Entered] `some_method` with params: name={name}, a={a}"));
-    });
+    tokio::task::yield_now().await;
+    TracerContext::on_enter(format!("`some_method` with params: name={name}, a={a}"));
 
     a = first_computation(a).await;
     a = second_long_computation(a).await;
 
-    TracerContext::in_scope(|context| {
-        context.trace("[Exited] `some_method`");
-    });
+    TracerContext::on_exit("`some_method`");
     a
 }
 
 #[tokio::main]
 async fn main() {
-    let (traces, answer) = TracerContext::spawn(some_method("first", 0)).await;
+    // Spawn a lot of async computations in the multithreading runtime.
+    let handles: Vec<_> = (0..10)
+        .map(|i| tokio::spawn(TracerContext::in_scope(some_method("method", i))))
+        .collect();
+    // Wait for them for complete.
+    let results = futures_util::future::join_all(handles).await;
+    for result in results {
+        let (trace, answer) = result.expect("unable to join future");
 
-    println!("Computation answer is {answer}");
-    println!("Captured traces:");
-    for trace in traces {
-        println!("\t{trace}");
+        println!("Computation finished with answer: {answer}");
+        println!("Captured traces:");
+        for entry in trace {
+            println!("{entry}");
+        }
+        println!();
     }
 }

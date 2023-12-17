@@ -61,7 +61,10 @@
               runtimeInputs = [
                 rustToolchains.nightly
               ];
-              text = ''cargo miri test --all-features --all --all-targets'';
+              text = ''
+                cargo miri run --example async_tracer
+                cargo miri test --all-features --all --all-targets
+              '';
             })
           ];
         };

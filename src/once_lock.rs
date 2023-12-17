@@ -14,9 +14,9 @@ impl<T> FutureOnceLock<T> {
 
 impl<T: Send + 'static> FutureOnceLock<T> {
     #[inline]
-    pub fn with<F, R>(&'static self, mut f: F) -> R
+    pub fn with<F, R>(&'static self, f: F) -> R
     where
-        F: FnMut(&Option<T>) -> R,
+        F: FnOnce(&Option<T>) -> R,
     {
         let value = self.0.local_key().borrow();
         f(&value)
@@ -100,13 +100,13 @@ mod tests {
 
             VALUE.get().unwrap()
         }
-        .attach(&VALUE);
+        .with_scope(&VALUE);
 
         let fut_2 = async {
             VALUE.replace(15);
             VALUE.get().unwrap()
         }
-        .attach(&VALUE);
+        .with_scope(&VALUE);
 
         assert_eq!(fut_1.await, 42);
         assert_eq!(fut_2.await, 15);
@@ -116,7 +116,7 @@ mod tests {
                     VALUE.replace(115);
                     VALUE.get().unwrap()
                 }
-                .attach(&VALUE)
+                .with_scope(&VALUE)
             )
             .await
             .unwrap(),
