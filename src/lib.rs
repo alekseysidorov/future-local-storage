@@ -172,7 +172,10 @@ mod tests {
     #[test]
     fn test_once_lock_trivial() {
         static LOCK: FutureOnceLock<RefCell<String>> = FutureOnceLock::new();
-        LOCK.0.local_key().borrow_mut().replace(RefCell::new("0".to_owned()));
+        LOCK.0
+            .local_key()
+            .borrow_mut()
+            .replace(RefCell::new("0".to_owned()));
 
         assert_eq!(LOCK.with(|x| x.borrow().clone()), "0".to_owned());
         LOCK.with(|x| x.replace("42".to_owned()));
