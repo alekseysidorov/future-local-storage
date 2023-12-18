@@ -38,7 +38,12 @@
                     "llvm-tools"
                   ];
                 };
-                nightly = pkgs.rust-bin.nightly.latest.complete;
+                nightly = pkgs.rust-bin.nightly.latest.default.override {
+                  extensions = [
+                    "rust-src"
+                    "miri"
+                  ];
+                };
               };
             })
           ];
