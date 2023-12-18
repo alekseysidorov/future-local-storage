@@ -28,7 +28,7 @@ async fn first_computation(a: u64) -> u64 {
 
 async fn some_method(name: impl Display, mut a: u64) -> u64 {
     tokio::task::yield_now().await;
-    TracerContext::on_enter(format!("`some_method` with params: name={name}, a={a}"));
+    TracerContext::on_enter(format!("`some_method` with params: name='{name}', a={a}"));
 
     a = first_computation(a).await;
     a = second_long_computation(a).await;
@@ -40,9 +40,25 @@ async fn some_method(name: impl Display, mut a: u64) -> u64 {
 #[tokio::main]
 async fn main() {
     // Spawn a lot of async computations in the multithreading runtime.
-    let handles: Vec<_> = (0..10)
-        .map(|i| tokio::spawn(TracerContext::in_scope(some_method("method", i))))
-        .collect();
+    let handles: Vec<_> = [
+        (1, "lorem"),
+        (2, "ipsum"),
+        (3, "dolor"),
+        (4, "sit"),
+        (5, "amet"),
+        (6, "consectetur"),
+        (7, "adipiscing"),
+        (8, "elit"),
+        (9, "mauris"),
+        (10, "at consequat"),
+        (11, "dui"),
+        (12, "vel"),
+        (13, "convallis"),
+        (14, "purus"),
+    ]
+    .into_iter()
+    .map(|(i, method)| tokio::spawn(TracerContext::in_scope(some_method(method, i))))
+    .collect();
     // Wait for them for complete.
     let results = futures_util::future::join_all(handles).await;
     for result in results {
