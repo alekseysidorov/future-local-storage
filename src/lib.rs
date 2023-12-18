@@ -1,3 +1,7 @@
+//! # Overview
+//!
+//! This is an early pre-release demo, do not use it in production code!
+
 use std::{
     fmt::Debug,
     future::Future,
@@ -10,6 +14,7 @@ use pin_project::{pin_project, pinned_drop};
 
 mod imp;
 
+/// An init-once-per-future cell for thread-local values.
 pub struct FutureOnceLock<T>(imp::FutureLocalKey<T>);
 
 impl<T> FutureOnceLock<T> {
@@ -132,7 +137,7 @@ where
     F: Future,
 {
     /// Discards the future local value from the future output.
-    pub fn without_value(self) -> ScopedFuture<T, F> {
+    pub fn discard_value(self) -> ScopedFuture<T, F> {
         ScopedFuture(self)
     }
 }
@@ -241,11 +246,11 @@ mod tests {
             VALUE.with(Cell::get)
         }
         .with_scope(&VALUE, Cell::new(0))
-        .without_value();
+        .discard_value();
 
         let fut_2 = async { VALUE.with(Cell::get) }
             .with_scope(&VALUE, Cell::new(15))
-            .without_value();
+            .discard_value();
 
         assert_eq!(fut_1.await, 42);
         assert_eq!(fut_2.await, 15);
@@ -253,7 +258,7 @@ mod tests {
             tokio::spawn(
                 async { VALUE.with(Cell::get) }
                     .with_scope(&VALUE, Cell::new(115))
-                    .without_value()
+                    .discard_value()
             )
             .await
             .unwrap(),

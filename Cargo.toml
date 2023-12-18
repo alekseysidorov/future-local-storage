@@ -1,7 +1,10 @@
 [package]
 name = "future-local-storage"
-version = "0.1.0"
+description = "An init-once-per-future cell for thread-local values."
+version = "0.1.0-preview1"
 edition = "2021"
+license-file = "LICENSE"
+repository = "https://github.com/alekseysidorov/future-local-storage"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
