@@ -1,8 +1,9 @@
 [package]
 name = "future-local-storage"
 description = "An init-once-per-future cell for thread-local values."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
+license = "MIT"
 license-file = "LICENSE"
 repository = "https://github.com/alekseysidorov/future-local-storage"
 

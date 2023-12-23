@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- 
+-
+
+## 0.1.1
+
+- Fix licence in crate and CI rules.
 
 ## 0.1.0
 
