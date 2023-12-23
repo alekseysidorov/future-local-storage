@@ -1,8 +1,12 @@
 # Overview
 
-This crate provides an [`FutureOnceCell`] cell-like type, which provides the similar API as the [`tokio::task_local`] but without using any macros.
+This crate provides an [`FutureOnceCell`] cell-like type, which provides the
+similar API as the [`tokio::task_local`] but without using any macros.
 
-Future local storage associates a value to the context of a given future. After the future finished it returns this value back to the caller. That meaning that the values is passed through the context of the executed future. This functionality can be useful for tracing async code or adding metrics to it.
+Future local storage associates a value to the context of a given future. After
+the future finished it returns this value back to the caller. That meaning that
+the values is passed through the context of the executed future. This
+functionality can be useful for tracing async code or adding metrics to it.
 
 ## Usage
 

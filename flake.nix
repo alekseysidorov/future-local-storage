@@ -80,7 +80,7 @@
                 cargo miri test --all-features --all --all-targets
               '';
             };
-            
+
             # Run them all together
             ci-run-all = writeShellApplication {
               name = "ci-run-all";
