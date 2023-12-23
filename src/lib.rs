@@ -48,7 +48,7 @@ mod imp;
 pub struct FutureOnceCell<T>(imp::FutureLocalKey<T>);
 
 impl<T> FutureOnceCell<T> {
-    /// Creates an empty future once lock.
+    /// Creates an empty future once cell.
     #[must_use]
     pub const fn new() -> Self {
         Self(imp::FutureLocalKey::new())
