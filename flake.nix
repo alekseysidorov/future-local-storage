@@ -60,7 +60,7 @@
               text = ''
                 cargo test --all-features --all-targets
                 cargo publish --dry-run
-                '';
+              '';
             };
 
             ci-run-lints = writeShellApplication {
