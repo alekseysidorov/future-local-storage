@@ -5,28 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use future_local_storage::{FutureLocalStorage, FutureOnceLock};
+use future_local_storage::{FutureLocalStorage, FutureOnceCell};
 
-static CONTEXT: FutureOnceLock<TracerContext> = FutureOnceLock::new();
-
-#[derive(Debug)]
-pub struct TraceEntry {
-    pub duration_since: Duration,
-    pub event: String,
-    pub message: String,
-}
-
-impl Display for TraceEntry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:>8.2}ms: {:>12} {}",
-            self.duration_since.as_secs_f64() * 1_000_f64,
-            self.event,
-            self.message
-        )
-    }
-}
+/// Tracing span context.
+static CONTEXT: FutureOnceCell<TracerContext> = FutureOnceCell::new();
 
 #[derive(Debug)]
 pub struct TracerContext {
@@ -35,14 +17,18 @@ pub struct TracerContext {
 }
 
 impl TracerContext {
+    /// Adds an "entered" event to the trace.
     pub fn on_enter(message: impl Display) {
         Self::with(|tracer| tracer.add_entry("entered", message));
     }
 
+    /// Adds an "exit" event to the trace.
     pub fn on_exit(message: impl Display) {
         Self::with(|tracer| tracer.add_entry("exited", message));
     }
 
+    /// Each future has its own tracing context in which it is executed, and after execution
+    /// is complete, all events are returned along with the future output.
     pub async fn in_scope<R, F>(future: F) -> (Vec<TraceEntry>, R)
     where
         F: Future<Output = R>,
@@ -75,4 +61,11 @@ impl TracerContext {
     fn elapsed(&self) -> Duration {
         Instant::now().duration_since(self.begin)
     }
+}
+
+#[derive(Debug)]
+pub struct TraceEntry {
+    pub duration_since: Duration,
+    pub event: String,
+    pub message: String,
 }

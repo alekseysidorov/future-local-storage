@@ -38,25 +38,29 @@
                     "llvm-tools"
                   ];
                 };
-                nightly = pkgs.rust-bin.nightly.latest.complete;
+                nightly = pkgs.rust-bin.nightly.latest.default.override {
+                  extensions = [
+                    "rust-src"
+                    "miri"
+                  ];
+                };
               };
             })
           ];
         };
 
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = with pkgs; [
-            rustToolchains.stable
-
+          nativeBuildInputs = with pkgs; let
             # Scripts used in CI
-            (writeShellApplication {
+            ci-run-tests = writeShellApplication {
               name = "ci-run-tests";
               runtimeInputs = [
                 rustToolchains.stable
               ];
               text = ''cargo test --all-features --all-targets'';
-            })
-            (writeShellApplication {
+            };
+
+            ci-run-lints = writeShellApplication {
               name = "ci-run-lints";
               runtimeInputs = [
                 rustToolchains.stable
@@ -65,8 +69,9 @@
                 cargo clippy --all-features --all --all-targets
                 cargo doc --all-features  --no-deps
               '';
-            })
-            (writeShellApplication {
+            };
+
+            ci-run-miri-tests = writeShellApplication {
               name = "ci-run-miri-tests";
               runtimeInputs = [
                 rustToolchains.nightly
@@ -74,10 +79,34 @@
               text = ''
                 cargo miri test --all-features --all --all-targets
               '';
-            })
+            };
+
+            # Run them all together
+            ci-run-all = writeShellApplication {
+              name = "ci-run-all";
+              runtimeInputs = [
+                ci-run-tests
+                ci-run-lints
+                ci-run-miri-tests
+              ];
+              text = ''
+                ci-run-tests
+                ci-run-lints
+                ci-run-miri-tests
+              '';
+            };
+          in
+          [
+            rustToolchains.stable
+
+            ci-run-tests
+            ci-run-lints
+            ci-run-miri-tests
+            ci-run-all
           ];
         };
-        devShells.miri = pkgs.mkShell {
+        # Nightly compilator to run miri tests
+        devShells.nightly = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             rustToolchains.nightly
           ];

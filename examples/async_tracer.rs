@@ -1,8 +1,22 @@
+//! A toy async tracer example.
+
 use std::{fmt::Display, time::Duration};
 
-use context::TracerContext;
+use context::{TraceEntry, TracerContext};
 
 mod context;
+
+impl Display for TraceEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:>8.2}ms: {:>12} {}",
+            self.duration_since.as_secs_f64() * 1_000_f64,
+            self.event,
+            self.message
+        )
+    }
+}
 
 async fn second_long_computation(a: u64) -> u64 {
     TracerContext::on_enter(format!("`second_long_computation` with params: a={a}"));
@@ -59,6 +73,7 @@ async fn main() {
     .into_iter()
     .map(|(i, method)| tokio::spawn(TracerContext::in_scope(some_method(method, i))))
     .collect();
+
     // Wait for them for complete.
     let results = futures_util::future::join_all(handles).await;
     for result in results {
