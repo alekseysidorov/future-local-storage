@@ -1,20 +1,50 @@
-//! # Overview
+#![doc = include_str!("../README.md")]
 //!
-//! This is an early pre-release demo, do not use it in production code!
+//! ## Examples
+//!
+//! ### Tracing spans
+//!
+//! ```rust
+#![doc = include_str!("../examples/context/mod.rs")]
+//!
+//! // Usage example
+//!
+//! async fn some_method(mut a: u64) -> u64 {
+//!     TracerContext::on_enter(format!("`some_method` with params: a={a}"));
+//!    
+//!     // Some async computation
+//!     
+//!     TracerContext::on_exit("`some_method`");
+//!     a * 32
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let (trace, result) = TracerContext::in_scope(some_method(45)).await;
+//!
+//!     println!("answer: {result}");
+//!     println!("trace: {trace:#?}");
+//! }
+//! ```
+//!
+//! [`tokio::task_local`]: https://docs.rs/tokio/latest/tokio/macro.task_local.html
 
-use std::{
-    fmt::Debug,
-    future::Future,
-};
+use std::{fmt::Debug, future::Future};
 
 use future::ScopedFutureWithValue;
 use imp::FutureLocalKey;
 
-
-mod imp;
 pub mod future;
+mod imp;
 
 /// An init-once-per-future cell for thread-local values.
+///
+/// It uses thread local storage to ensure that the each polled future has its own local storage key.
+/// Unlike the [`std::thread::LocalKey`] this cell will *not* lazily initialize the value on first access.
+/// Instead, the value is first initialized when the future containing the future-local is first polled
+/// by an executor.
+///
+/// After the execution finished the value moves from the future local cell to the future output.
 pub struct FutureOnceCell<T>(imp::FutureLocalKey<T>);
 
 impl<T> FutureOnceCell<T> {
@@ -33,7 +63,10 @@ impl<T: Send + 'static> FutureOnceCell<T> {
     ///
     /// # Panics
     ///
-    /// This method will panic if the future local doesn't have a value set.
+    /// - This method will panic if the future local doesn't have a value set.
+    ///
+    /// - If you the returned future inside the a call to [`Self::with`] on the same cell, then the
+    ///   call to `poll` will panic.
     #[inline]
     pub fn with<F, R>(&'static self, f: F) -> R
     where
@@ -60,7 +93,27 @@ impl<T: Send + 'static> FutureOnceCell<T> {
 
     /// Sets a value `T` as the future-local value for the future `F`.
     ///
-    /// On completion of `scope`, the future-local value will be dropped.
+    /// On completion of `scope`, the future-local value will be returned by the scoped future.
+    ///
+    /// ```rust
+    /// use std::cell::Cell;
+    ///
+    /// use future_local_storage::FutureOnceCell;
+    ///
+    /// static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let (output, answer) = VALUE.scope(Cell::from(0), async {
+    ///         VALUE.with(|x| {
+    ///             let value = x.get();
+    ///             x.set(value + 1);
+    ///         });
+    ///
+    ///         42
+    ///     }).await;
+    /// }
+    /// ```
     #[inline]
     pub fn scope<F>(&'static self, value: T, future: F) -> ScopedFutureWithValue<T, F>
     where
@@ -89,6 +142,26 @@ pub trait FutureLocalStorage: Future + Sized + private::Sealed {
     /// Sets a given value as the future local value of this future.
     ///
     /// Each future instance will have its own state of the attached value.
+    ///
+    /// ```rust
+    /// use std::cell::Cell;
+    ///
+    /// use future_local_storage::{FutureOnceCell, FutureLocalStorage};
+    ///
+    /// static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let (output, answer) = async {
+    ///         VALUE.with(|x| {
+    ///             let value = x.get();
+    ///             x.set(value + 1);
+    ///         });
+    ///         
+    ///         42
+    ///     }.with_scope(&VALUE, Cell::from(0)).await;
+    /// }
+    /// ```
     fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFutureWithValue<T, Self>
     where
         T: Send,
@@ -113,7 +186,7 @@ mod tests {
     use crate::FutureLocalStorage;
 
     #[test]
-    fn test_once_lock_trivial() {
+    fn test_once_cell_without_future() {
         static LOCK: FutureOnceCell<RefCell<String>> = FutureOnceCell::new();
         LOCK.0
             .local_key()
@@ -126,7 +199,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_future_once_lock() {
+    async fn test_future_once_cell_output() {
+        static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
+
+        let (output, ()) = VALUE
+            .scope(Cell::from(0), async {
+                VALUE.with(|x| {
+                    let value = x.get();
+                    x.set(value + 1);
+                });
+            })
+            .await;
+
+        assert_eq!(output.into_inner(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_future_once_cell_discard_value() {
         static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
 
         let fut_1 = async {

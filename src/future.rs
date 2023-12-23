@@ -1,4 +1,4 @@
-//! Future types
+//! Future types.
 
 use std::{
     future::Future,
@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::{pin_project, pinned_drop};
 
-use crate::{FutureLocalStorage, imp::FutureLocalKey};
+use crate::{imp::FutureLocalKey, FutureLocalStorage};
 
 impl<F: Future> FutureLocalStorage for F {
     fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFutureWithValue<T, Self>
@@ -26,9 +26,9 @@ impl<F: Future> FutureLocalStorage for F {
 }
 
 /// A [`Future`] that sets a value `T` of a future local for the future `F` during its execution.
-///
 /// Unlike the [`ScopedFutureWithValue`] this future discards the future local value.
 #[pin_project]
+#[derive(Debug)]
 pub struct ScopedFuture<T, F>(#[pin] ScopedFutureWithValue<T, F>)
 where
     T: Send + 'static,
@@ -61,6 +61,7 @@ where
 ///
 /// This future also returns a future local value after execution.
 #[pin_project(PinnedDrop)]
+#[derive(Debug)]
 pub struct ScopedFutureWithValue<T, F>
 where
     T: Send + 'static,
