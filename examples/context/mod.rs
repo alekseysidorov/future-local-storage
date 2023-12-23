@@ -5,9 +5,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use future_local_storage::{FutureLocalStorage, FutureOnceLock};
+use future_local_storage::{FutureLocalStorage, FutureOnceCell};
 
-static CONTEXT: FutureOnceLock<TracerContext> = FutureOnceLock::new();
+static CONTEXT: FutureOnceCell<TracerContext> = FutureOnceCell::new();
 
 #[derive(Debug)]
 pub struct TraceEntry {
