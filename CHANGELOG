@@ -4,6 +4,10 @@
 
 -
 
+## 0.1.2
+
+- Use `include_md` macro to make documentation more readable.
+
 ## 0.1.1
 
 - Fix licence in crate and CI rules.

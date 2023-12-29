@@ -1,10 +1,9 @@
 [package]
 name = "future-local-storage"
 description = "An init-once-per-future cell for thread-local values."
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
-license = "MIT"
-license-file = "LICENSE"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/alekseysidorov/future-local-storage"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,6 +14,7 @@ default = []
 [dependencies]
 pin-project = "1.1.3"
 state = { version = "0.6.0", features = ["tls"] }
+include-utils = "0.1.1"
 
 [dev-dependencies]
 futures-util = { version = "0.3" }
@@ -30,3 +30,6 @@ unsafe_code = "deny"
 pedantic = "warn"
 module_name_repetitions = "allow"
 missing_panics_doc = "warn"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
