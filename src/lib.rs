@@ -1,4 +1,5 @@
-#![doc = include_str!("../README.md")]
+//! # Overview
+#![doc = include_utils::include_md!("README.md:description")]
 //!
 //! ## Examples
 //!
@@ -26,8 +27,6 @@
 //!     println!("trace: {trace:#?}");
 //! }
 //! ```
-//!
-//! [`tokio::task_local`]: https://docs.rs/tokio/latest/tokio/macro.task_local.html
 
 use std::{fmt::Debug, future::Future};
 

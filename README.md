@@ -1,4 +1,8 @@
-# Overview
+# Future Local Storage
+
+An init-once-per-future cell for thread-local values.
+
+<!-- ANCHOR: description -->
 
 This crate provides an [`FutureOnceCell`] cell-like type, which provides the
 similar API as the [`tokio::task_local`] but without using any macros.
@@ -32,3 +36,9 @@ async fn main() {
     assert_eq!(answer, "42");
 }
 ```
+
+[`tokio::task_local`]: https://docs.rs/tokio/latest/tokio/macro.task_local.html
+
+<!-- ANCHOR_END: description -->
+
+[`FutureOnceCell`]: #Usage
