@@ -7,19 +7,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
+      - uses: cachix/install-nix-action@v25
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      - uses: cachix/cachix-action@v12
+      - uses: cachix/cachix-action@v14
         with:
           name: nixpkgs-cross-overlay
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
       - name: "Check formatting"
         run: nix flake check
 
       - name: "Run linters"
-        run: nix develop --command ci-run-lints
+        run: nix run .#ci-lints
+
+      - name: "Run semver checks"
+        run: nix run .#ci-semver-checks
 
   tests:
     strategy:
@@ -29,32 +31,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
+      - uses: cachix/install-nix-action@v25
         with:
           nix_path: nixpkgs=channel:nixos-unstable
-      - uses: cachix/cachix-action@v12
+      - uses: cachix/cachix-action@v14
         with:
           name: nixpkgs-cross-overlay
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - name: "Run cargo tests"
-        run: nix develop --command ci-run-tests
-
-  miri-checks:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-      - uses: cachix/cachix-action@v12
-        with:
-          name: nixpkgs-cross-overlay
-          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: "Run tests"
+        run: nix run .#ci-tests
 
       - name: "Run miri tests"
-        run: nix develop --command ci-run-miri-tests
+        run: nix run .#ci-miri-tests

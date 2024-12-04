@@ -1,5 +1,10 @@
 # Future Local Storage
 
+[![tests](https://github.com/alekseysidorov/future-local-storage/actions/workflows/ci.yml/badge.svg)](https://github.com/alekseysidorov/future-local-storage/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/future-local-storage.svg)](https://crates.io/crates/future-local-storage)
+[![Documentation](https://docs.rs/future-local-storage/badge.svg)](https://docs.rs/future-local-storage)
+[![MIT/Apache-2 licensed](https://img.shields.io/crates/l/future-local-storage)](./LICENSE)
+
 An init-once-per-future cell for thread-local values.
 
 <!-- ANCHOR: description -->
