@@ -21,13 +21,20 @@ impl<T> FutureLocalKey<T> {
     }
 }
 
+impl<T> Default for FutureLocalKey<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Send + 'static> FutureLocalKey<T> {
-    /// Returns a reference to the underlying thread local storage key, and if it has not been initalized,
+    /// Returns a reference to the underlying thread local storage key, and if it has not been initialized,
     /// initializes it with the `None` value.
     ///
     /// # Important
     ///
-    /// Using this method ensures that the local key is initialized, use only it ot access the underlying
+    /// Using this method ensures that the local key is initialized, use it only to access the underlying
     /// thread local key.
     #[inline]
     pub fn local_key(&'static self) -> &'static LocalKey<T> {

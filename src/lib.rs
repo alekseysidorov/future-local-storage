@@ -12,9 +12,9 @@
 //!
 //! async fn some_method(mut a: u64) -> u64 {
 //!     TracerContext::on_enter(format!("`some_method` with params: a={a}"));
-//!    
+//!
 //!     // Some async computation
-//!     
+//!
 //!     TracerContext::on_exit("`some_method`");
 //!     a * 32
 //! }
@@ -51,6 +51,13 @@ impl<T> FutureOnceCell<T> {
     #[must_use]
     pub const fn new() -> Self {
         Self(imp::FutureLocalKey::new())
+    }
+}
+
+impl<T> Default for FutureOnceCell<T> {
+    #[must_use]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -156,7 +163,7 @@ pub trait FutureLocalStorage: Future + Sized + private::Sealed {
     ///             let value = x.get();
     ///             x.set(value + 1);
     ///         });
-    ///         
+    ///
     ///         42
     ///     }.with_scope(&VALUE, Cell::from(0)).await;
     /// }
