@@ -8,7 +8,7 @@ use std::{
 
 use pin_project::{pin_project, pinned_drop};
 
-use crate::{imp::FutureLocalKey, FutureLocalStorage};
+use crate::{FutureLocalStorage, imp::FutureLocalKey};
 
 impl<F: Future> FutureLocalStorage for F {
     fn with_scope<T, S>(self, scope: &'static S, value: T) -> ScopedFutureWithValue<T, Self>

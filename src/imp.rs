@@ -10,7 +10,8 @@ pub type LocalKey<T> = RefCell<Option<T>>;
 
 /// A future local storage key which owns its content.
 ///
-/// It uses thread local storage to ensure that the each polled future has its own local storage key.
+/// It uses thread local storage to ensure that the each polled future has its own local storage
+/// key.
 pub struct FutureLocalKey<T>(LocalInitCell<LocalKey<T>>);
 
 impl<T> FutureLocalKey<T> {
@@ -29,13 +30,13 @@ impl<T> Default for FutureLocalKey<T> {
 }
 
 impl<T: Send + 'static> FutureLocalKey<T> {
-    /// Returns a reference to the underlying thread local storage key, and if it has not been initialized,
-    /// initializes it with the `None` value.
+    /// Returns a reference to the underlying thread local storage key, and if it has not been
+    /// initialized, initializes it with the `None` value.
     ///
     /// # Important
     ///
-    /// Using this method ensures that the local key is initialized, use it only to access the underlying
-    /// thread local key.
+    /// Using this method ensures that the local key is initialized, use it only to access the
+    /// underlying thread local key.
     #[inline]
     pub fn local_key(&'static self) -> &'static LocalKey<T> {
         self.0.set(|| RefCell::new(None));
