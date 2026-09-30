@@ -83,6 +83,36 @@ where
     fn drop(self: Pin<&mut Self>) {}
 }
 
+struct FutureLocalGuard<'a, T: Send + 'static> {
+    scope: &'static FutureLocalKey<T>,
+    value: &'a mut Option<T>,
+    active: bool,
+}
+
+impl<'a, T: Send + 'static> FutureLocalGuard<'a, T> {
+    fn enter(scope: &'static FutureLocalKey<T>, value: &'a mut Option<T>) -> Self {
+        FutureLocalKey::swap(scope, value);
+        Self {
+            scope,
+            value,
+            active: true,
+        }
+    }
+
+    fn exit(&mut self) {
+        if self.active {
+            FutureLocalKey::swap(self.scope, self.value);
+            self.active = false;
+        }
+    }
+}
+
+impl<T: Send + 'static> Drop for FutureLocalGuard<'_, T> {
+    fn drop(&mut self) {
+        self.exit();
+    }
+}
+
 impl<T, F> Future for ScopedFutureWithValue<T, F>
 where
     T: Send,
@@ -92,12 +122,11 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        // Swap in future local key.
-        FutureLocalKey::swap(this.scope, this.value);
+        let mut guard = FutureLocalGuard::enter(this.scope, this.value);
         // Poll the underlying future.
         let result = this.inner.poll(cx);
-        // Swap future local key back.
-        FutureLocalKey::swap(this.scope, this.value);
+        guard.exit();
+        drop(guard);
 
         let result = std::task::ready!(result);
         // Take the scoped value to return it back to the future caller.
@@ -113,5 +142,66 @@ where
 {
     fn from(value: ScopedFutureWithValue<T, F>) -> Self {
         Self(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        future::{Future, pending},
+        panic::AssertUnwindSafe,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        task::{Context, Poll},
+    };
+
+    use futures_util::task::noop_waker;
+
+    use super::*;
+    use crate::FutureOnceCell;
+
+    struct DropCounter(Arc<AtomicUsize>);
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn dropping_pending_future_drops_scoped_value() {
+        static CELL: FutureOnceCell<DropCounter> = FutureOnceCell::new();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let value = DropCounter(Arc::clone(&drops));
+        let mut future = Box::pin(pending::<()>().with_scope(&CELL, value));
+        let waker = noop_waker();
+        let mut context = Context::from_waker(&waker);
+
+        assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
+        drop(future);
+
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn panic_during_poll_restores_previous_value() {
+        static CELL: FutureOnceCell<usize> = FutureOnceCell::new();
+        let mut future = Box::pin(
+            async {
+                panic!("poll failed");
+            }
+            .with_scope(&CELL, 42),
+        );
+        let waker = noop_waker();
+        let mut context = Context::from_waker(&waker);
+
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let _ = future.as_mut().poll(&mut context);
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(CELL.0.local_key().borrow().as_ref(), None);
     }
 }
