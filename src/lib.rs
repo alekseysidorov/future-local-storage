@@ -190,8 +190,9 @@ mod tests {
     use super::*;
     use crate::FutureLocalStorage;
 
+    // Direct cell access.
     #[test]
-    fn test_once_cell_without_future() {
+    fn once_cell_can_be_accessed_without_a_future() {
         static LOCK: FutureOnceCell<RefCell<String>> = FutureOnceCell::new();
         LOCK.0
             .local_key()
@@ -203,8 +204,9 @@ mod tests {
         assert_eq!(LOCK.with(|x| x.borrow().clone()), "42".to_owned());
     }
 
+    // Value ownership and output.
     #[tokio::test]
-    async fn test_future_once_cell_output() {
+    async fn scoped_future_returns_the_local_value() {
         static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
 
         let (output, ()) = VALUE
@@ -220,7 +222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_future_once_cell_discard_value() {
+    async fn discard_value_preserves_future_local_isolation() {
         static VALUE: FutureOnceCell<Cell<u64>> = FutureOnceCell::new();
 
         let fut_1 = async {
@@ -253,5 +255,34 @@ mod tests {
             .unwrap(),
             115
         );
+    }
+
+    // Cross-thread execution.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn scoped_future_preserves_value_across_threads() {
+        static VALUE: FutureOnceCell<u32> = FutureOnceCell::new();
+
+        let tasks = (0..16).map(|value| {
+            tokio::spawn(async move {
+                let (value, ()) = VALUE
+                    .scope(value, async {
+                        for _ in 0..4 {
+                            assert_eq!(VALUE.get(), value);
+                            tokio::task::yield_now().await;
+                        }
+                    })
+                    .await;
+
+                value
+            })
+        });
+
+        let values = futures_util::future::join_all(tasks)
+            .await
+            .into_iter()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>();
+
+        assert_eq!(values, (0..16).collect::<Vec<_>>());
     }
 }
