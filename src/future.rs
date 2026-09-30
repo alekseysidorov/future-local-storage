@@ -170,6 +170,7 @@ mod tests {
         }
     }
 
+    // Cancellation and cleanup.
     #[test]
     fn dropping_pending_future_drops_scoped_value() {
         static CELL: FutureOnceCell<DropCounter> = FutureOnceCell::new();
@@ -183,8 +184,27 @@ mod tests {
         drop(future);
 
         assert_eq!(drops.load(Ordering::SeqCst), 1);
+        // Cancellation must leave the thread-local slot in its previous state.
+        assert!(CELL.0.local_key().borrow().is_none());
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_future_does_not_leak_value_to_the_next_future() {
+        static CELL: FutureOnceCell<u32> = FutureOnceCell::new();
+        let mut future = Box::pin(pending::<()>().with_scope(&CELL, 7));
+        let waker = noop_waker();
+        let mut context = Context::from_waker(&waker);
+
+        assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
+        drop(future);
+
+        // A later future must not observe state from the cancelled future.
+        assert_eq!(CELL.0.local_key().borrow().as_ref(), None);
+        let (value, ()) = CELL.scope(9, async {}).await;
+        assert_eq!(value, 9);
+    }
+
+    // Panic safety.
     #[test]
     fn panic_during_poll_restores_previous_value() {
         static CELL: FutureOnceCell<usize> = FutureOnceCell::new();
@@ -202,6 +222,32 @@ mod tests {
         }));
 
         assert!(result.is_err());
+        assert_eq!(CELL.0.local_key().borrow().as_ref(), None);
+    }
+
+    // Nested scopes.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn nested_scopes_restore_the_outer_value() {
+        static CELL: FutureOnceCell<u32> = FutureOnceCell::new();
+
+        let (outer, ()) = CELL
+            .scope(1, async {
+                assert_eq!(CELL.get(), 1);
+
+                let (inner, ()) = CELL
+                    .scope(2, async {
+                        assert_eq!(CELL.get(), 2);
+                        tokio::task::yield_now().await;
+                        assert_eq!(CELL.get(), 2);
+                    })
+                    .await;
+
+                assert_eq!(inner, 2);
+                assert_eq!(CELL.get(), 1);
+            })
+            .await;
+
+        assert_eq!(outer, 1);
         assert_eq!(CELL.0.local_key().borrow().as_ref(), None);
     }
 }
