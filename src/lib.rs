@@ -38,10 +38,10 @@ mod imp;
 
 /// An init-once-per-future cell for thread-local values.
 ///
-/// It uses thread local storage to ensure that the each polled future has its own local storage key.
-/// Unlike the [`std::thread::LocalKey`] this cell will *not* lazily initialize the value on first access.
-/// Instead, the value is first initialized when the future containing the future-local is first polled
-/// by an executor.
+/// It uses thread local storage to ensure that the each polled future has its own local storage
+/// key. Unlike the [`std::thread::LocalKey`] this cell will *not* lazily initialize the value on
+/// first access. Instead, the value is first initialized when the future containing the
+/// future-local is first polled by an executor.
 ///
 /// After the execution finished the value moves from the future local cell to the future output.
 pub struct FutureOnceCell<T>(imp::FutureLocalKey<T>);
@@ -55,7 +55,6 @@ impl<T> FutureOnceCell<T> {
 }
 
 impl<T> Default for FutureOnceCell<T> {
-    #[must_use]
     fn default() -> Self {
         Self::new()
     }
