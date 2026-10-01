@@ -67,7 +67,6 @@ where
     T: Send + 'static,
     F: Future,
 {
-    // TODO Implement manually drop to provide scope access to the future Drop.
     #[pin]
     inner: F,
     scope: &'static FutureLocalKey<T>,

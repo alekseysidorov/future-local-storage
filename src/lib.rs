@@ -38,6 +38,12 @@ mod imp;
 
 /// An init-once-per-future cell for thread-local values.
 ///
+/// The value is active only while a scoped future is being polled. It is
+/// restored after every poll, including a panic, and is returned from a
+/// completed [`ScopedFutureWithValue`]. See the
+/// [lifecycle semantics](#lifecycle-semantics) section for cancellation,
+/// nesting, and cross-thread behavior.
+///
 /// It uses thread local storage to ensure that the each polled future has its own local storage
 /// key. Unlike the [`std::thread::LocalKey`] this cell will *not* lazily initialize the value on
 /// first access. Instead, the value is first initialized when the future containing the
@@ -99,6 +105,8 @@ impl<T: Send + 'static> FutureOnceCell<T> {
     /// Sets a value `T` as the future-local value for the future `F`.
     ///
     /// On completion of `scope`, the future-local value will be returned by the scoped future.
+    /// If the scoped future is dropped before completion, the value is dropped
+    /// and the previous future-local value is restored.
     ///
     /// ```rust
     /// use std::cell::Cell;
