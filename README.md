@@ -44,6 +44,23 @@ async fn main() {
 
 [`tokio::task_local`]: https://docs.rs/tokio/latest/tokio/macro.task_local.html
 
+## Lifecycle semantics
+
+The scoped future activates its value only while the wrapped future is being
+polled and restores the previous value afterwards, including when polling
+panics. The panic propagates to the caller; a future that panicked during
+polling must not be polled again.
+
+Dropping an incomplete scope drops its value and restores the previous one. The
+wrapped future is dropped without this scope active, so its `Drop` implementation
+must not rely on accessing the scope.
+
+Scopes are stack-like: an inner scope shadows the outer one until it returns or
+is dropped, while different cells remain independent. The value follows the
+future across executor threads, so `T` must be `Send` and the future must meet
+the executor's bounds. Neither `with` nor `get` creates a value; both panic
+without an active scope, as does recursively polling through the same cell.
+
 <!-- ANCHOR_END: description -->
 
 [`FutureOnceCell`]: #Usage
